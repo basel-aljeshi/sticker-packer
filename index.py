@@ -1,35 +1,42 @@
 import os
 import shutil
 import zipfile
+import json
 from PIL import Image
 
 class WhatsAppStickerPackCreator:
-    def __init__(self, folder_name):
+    def __init__(self, folder_name, pack_name):
         self.folder_name = folder_name
 
     def create_sticker_pack(self):
         #Check if folder exists
+        print("Initial ask")
         input_folder = os.path.join(os.getcwd(), self.folder_name)
+        print("Checking if folder exists")
         if not os.path.isdir(input_folder):
             print(f"Error: Folder '{self.folder_name}' not found in the current directory.")
             return
 
         #Create a new folder to hold everything
-        sticker_pack_name = input_folder + "_webp"  # Replace with your desired name
+        sticker_pack_name = pack_name
         output_folder = os.path.join(os.getcwd(), sticker_pack_name)
         os.makedirs(output_folder, exist_ok=True)
+        print("Creating new folder")
 
         #Move original images folder into new folder
         new_input_folder = os.path.join(output_folder, self.folder_name)
         shutil.move(input_folder, new_input_folder)
+        print("Transferring images to new folder")
 
         #Create processed images folder
         processed_images_folder = os.path.join(output_folder, "processed_images")
         os.makedirs(processed_images_folder, exist_ok=True)
+        print("Creating processed images folder")
 
         #Process images and GIFs, and select first image as tray icon
         image_processor = ImageProcessor()
         first_image_processed = False
+        print("Processing images")
         for file in os.listdir(new_input_folder):
             if file.endswith(('.jpg', '.jpeg', '.png', '.gif')):
                 file_path = os.path.join(new_input_folder, file)
@@ -41,16 +48,14 @@ class WhatsAppStickerPackCreator:
                     image_processor.resize_for_tray_icon(tray_image_path)
                     first_image_processed = True
 
-        #Create contents.json (use the selected tray_image_path)
-        json_generator = JsonMetadataGenerator()
-        json_generator.create_contents_json(processed_images_folder, output_folder, tray_image_path)
-
         #Create the .wastickers ZIP archive
         archiver = StickerPackArchiver()
         archiver.create_sticker_pack_archive(output_folder, sticker_pack_name, tray_image_path)
+        print("Zipping stickers")
 
 class ImageProcessor:
     def process_image_or_gif(self, file_path, output_folder):
+        print("processing image")
         try:
             if file_path.endswith('.gif'):
                 # Handle GIFs
@@ -101,6 +106,7 @@ class ImageProcessor:
             print(f"Error processing {file_path}: {e}")
 
     def resize_for_tray_icon(self, image_path):
+        print("resizing pack icon")
         try:
             img = Image.open(image_path).convert('RGBA')
             img = img.resize((96, 96), Image.LANCZOS)
@@ -109,46 +115,30 @@ class ImageProcessor:
         except Exception as e:
             print(f"Error resizing for tray icon: {e}")
 
-class JsonMetadataGenerator:
-    def create_contents_json(self, image_folder, output_folder, tray_image_path):
-        sticker_data = []
-
-        image_files = [f for f in os.listdir(image_folder) if f.endswith('.webp')]
-
-        for image_file in image_files:
-            sticker_data.append({
-                "image_file": image_file,
-                "emojis": []  # You'll need to add logic to assign emojis if needed
-            })
-
-        contents = {
-            "identifier": "unique_sticker_pack_id",
-            "name": output_folder,
-            "publisher": "Sticker_Packer",
-            "tray_image": os.path.basename(tray_image_path),
-            "version": 1,
-            "stickers": sticker_data
-        }
-
-        json_file_path = os.path.join(output_folder, "contents.json")
-        with open(json_file_path, "w") as f:
-            json.dump(contents, f, indent=2)
-
-        print(f"contents.json created in {output_folder}")
-
 class StickerPackArchiver:
     def create_sticker_pack_archive(self, output_folder, sticker_pack_name, tray_image_path):
         zip_file_path = os.path.join(output_folder, f"{sticker_pack_name}.wastickers")
         with zipfile.ZipFile(zip_file_path, 'w') as zipf:
-            for file in os.listdir(output_folder):
-                if file.endswith('.webp') or file == "contents.json" or file == os.path.basename(tray_image_path):
-                    file_path = os.path.join(output_folder, file)
+            # Add processed images to ZIP
+            for file in os.listdir(os.path.join(output_folder, "processed_images")):
+                if file.endswith('.webp'):
+                    file_path = os.path.join(output_folder, "processed_images", file)
                     zipf.write(file_path, arcname=file)
+
+            # Add title.txt and author.txt to ZIP
+            with open(os.path.join(output_folder, "title.txt"), "w") as f:
+                f.write(sticker_pack_name)
+            zipf.write(os.path.join(output_folder, "title.txt"), arcname="title.txt")
+
+            with open(os.path.join(output_folder, "author.txt"), "w") as f:
+                f.write("-")  # Replace with your actual information
+            zipf.write(os.path.join(output_folder, "author.txt"), arcname="author.txt")
 
         print(f"Sticker pack created: {zip_file_path}")
 
 if __name__ == "__main__":
     folder_name = input("Enter the Image Folder name (in the current directory): ")
+    pack_name = input("Enter the title of the pack: ")
 
-    creator = WhatsAppStickerPackCreator(folder_name)
+    creator = WhatsAppStickerPackCreator(folder_name, pack_name)
     creator.create_sticker_pack()
